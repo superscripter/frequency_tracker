@@ -10,16 +10,20 @@ import pytz
 """
 Working on...
 
-Spin up the user_calculations.db and user.db
+
 
 Plan to deploy on Render (free tier works great for FastAPI)
 
-Later, connect it to PostgreSQL (e.g., Supabase, Railway, or Render’s own DB service)
+Later, connect it to PostgreSQL (e.g., Supabase, Railway, or Render's own DB service)
 
-Support for the seasonalty frequency calculations
-Support fot tier 2 or monthly goals
+
+Allow the user to set a date that strava synce shoudl go back to, go to 20 days ago by default
+
+---
+
+Support for seasonal expectations
+Support for tier 2 or monthly goals
 Be able to put dates that shouldnt matter to the calculation (sick time, vacation time, injury, etc.)
-Be able to ingest ALL my strava data
 Be able to calculate the average from a specific date
 Give a "start" date for when you want an activity to being being calcualted from (for total avg)
 """
@@ -126,10 +130,10 @@ class FrequencyTracker:
                     conn.commit()
 
 
-    def sync_strava(self):
+    def sync_strava(self, since: str = None):
         # This function does not attempt to trim the activities to only new ones
         # Duplicates are handled on the sql end
-        activities = self.strava_handler.fetch_strava_activities()
+        activities = self.strava_handler.fetch_strava_activities(since)
         for strava_activity in activities:
             activity = Activity(type=strava_activity['sport_type'], time=strava_activity['start_date'])
             self.add_activity(activity)
@@ -170,65 +174,76 @@ class FrequencyTracker:
         # Find the earliest time for each activity
         # Count all activities between that time and today
         # Compute the average
-
-        activity_counter = {"Swim" : [0, 0, 0, 0],
-                            "Ride" : [0, 0, 0, 0],
-                            "Run" : [0, 0, 0, 0],
-                            "WeightTraining" : [0, 0, 0, 0],
-                            "Pilates" : [0, 0, 0, 0],
-                            "Yoga" : [0, 0, 0, 0],
-                            "Reading" : [0, 0, 0, 0],
-                            "Woodworking" : [0, 0, 0, 0],
-                            "Chess" : [0, 0, 0, 0],
-                            "Piano" : [0, 0, 0, 0]}
-        
+        # Initialize activity counter from user_frequencies table
+        activity_counter = {}
         activity_set = set()
-        for activity_name in activity_counter:
-            activity_set.add(activity_name)
+        
+        with self.database_handler.user_frequencies_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT type
+                FROM user_frequencies
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                activity_type = row[0]
+                activity_counter[activity_type] = [0, 0, 0, 0]  # [total, thirty_days, season, earliest_time]
+                activity_set.add(activity_type)
 
         # 30 Days ago
         local_timestamp = datetime.now()
         rollback = local_timestamp.hour * 3600 + local_timestamp.minute*60 + local_timestamp.second
-        difference =  timedelta(seconds = (30*24*3600 +  rollback))
+        difference = timedelta(seconds=(30*24*3600 + rollback))
         thirty_days_ago = datetime.now(timezone.utc) - difference
 
-        # Summer start
+        # Get user timezone
         user_timezone = pytz.timezone("UTC")
         with self.database_handler.user_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, timezone
                 FROM user
-            """,)
-            row = cursor.fetchone() #{"id": row[0], "timezone": row[1]}
+            """)
+            row = cursor.fetchone()
             user_timezone = pytz.timezone(row[1])
-        summer_start = user_timezone.localize(datetime(2025, 6, 1), is_dst=None)
+        
+        # Determine current season and set season start date
+        current_date = datetime.now(user_timezone)
+        current_month = current_date.month
+        
+        if 3 <= current_month < 6:  # Spring (March-May)
+            season_start = user_timezone.localize(datetime(current_date.year, 3, 1), is_dst=None)
+        elif 6 <= current_month < 9:  # Summer (June-August)
+            season_start = user_timezone.localize(datetime(current_date.year, 6, 1), is_dst=None)
+        elif 9 <= current_month < 12:  # Fall (September-November)
+            season_start = user_timezone.localize(datetime(current_date.year, 9, 1), is_dst=None)
+        else:  # Winter (December-February)
+            season_start = user_timezone.localize(datetime(current_date.year, 12, 1), is_dst=None)
 
-        # We want to start with the oldest activities to make calculations easier
-        # Note : This loop recalculates ALL averages and not just thoose that have activities that are pertinent
+        # Process activities in chronological order
         with self.database_handler.activities_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, type, time
                 FROM activities
                 ORDER BY time ASC
-            """,)
-            rows = cursor.fetchall() #{"id": row[0], "type": row[1], "time": row[2]}
-            activities = [Activity(type=row[1], time=row[2]) for row in rows]  
+            """)
+            rows = cursor.fetchall()
+            activities = [Activity(type=row[1], time=row[2]) for row in rows]
+            
             for activity in activities:
-
-                # We use a set to record the earliest time of each activity
+                # Record earliest time for each activity type
                 if activity.type in activity_set:
                     activity_counter[activity.type][3] = activity.time
                     activity_set.remove(activity.type)
 
-                # Increment our counters for each average we hold
+                # Update counters for each average
                 if activity.type in activity_counter:
-                    activity_counter[activity.type][0] += 1 # Increment total counter
-                    if  datetime.fromisoformat(activity.time) > thirty_days_ago:
-                        activity_counter[activity.type][1] += 1 # Increment 30 day counter
-                    if  datetime.fromisoformat(activity.time) > summer_start:
-                        activity_counter[activity.type][2] += 1 # Increment seasonal counter
+                    activity_counter[activity.type][0] += 1  # Increment total counter
+                    if datetime.fromisoformat(activity.time) > thirty_days_ago:
+                        activity_counter[activity.type][1] += 1  # Increment 30 day counter
+                    if datetime.fromisoformat(activity.time) > season_start:
+                        activity_counter[activity.type][2] += 1  # Increment seasonal counter
 
 
         # Wrtie out the averages calculated to our user_calculation db
@@ -247,7 +262,7 @@ class FrequencyTracker:
 
             season_frequency = 0
             if activity_data[2] != 0:
-                season_frequency = round(self.calculation_handler.days_ago(summer_start.isoformat()) / activity_data[2], 2)
+                season_frequency = round(self.calculation_handler.days_ago(season_start.isoformat()) / activity_data[2], 2)
 
             with self.database_handler.user_calculations_connection() as conn:
                 cursor = conn.cursor()
@@ -260,9 +275,8 @@ class FrequencyTracker:
             
 
     def view_frequencies(self):
-
-        print("\n")
-
+        activities = []
+        
         with self.database_handler.user_calculations_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -271,7 +285,6 @@ class FrequencyTracker:
             """,)
             rows = cursor.fetchall() 
             for row in rows:  #{"id": row[0], "type": row[1], "total": row[2], "thirty": row[3], "season": row[4]}
-
                 activity_name = row[1]
                 total_frequency = float(row[2])
                 thirty_frequency = float(row[3])
@@ -290,39 +303,21 @@ class FrequencyTracker:
                         if activity_name == freq_row[1]:                
                             expected_frequency = int(freq_row[2])
 
-                # Print Name
-                rprint(f"{activity_name:<16} | ", end="")
-
-                # Current Track
                 current_frequency = self.time_of_last_activity(activity_name)
-                color = "[red]" 
-                if current_frequency >= 0 and current_frequency <= expected_frequency:
-                    color = "[green]"
-                rprint(f"{color + str(current_frequency):<3}", end="")  
-
-                # Expected Number
-                rprint(f"  [blue]{str(expected_frequency):<3}", end="")
-
-                #30 Day Average
-                color = "[red]"
-                if thirty_frequency <= expected_frequency and thirty_frequency != 0:
-                    color = "[green]"
-                rprint(f"  Thirty Day Average: {color + str(thirty_frequency):<5}", end="")  
-
-                #Summer Average
-                color = "[red]"
-                if season_frequency <= expected_frequency and season_frequency != 0:
-                    color = "[green]"
-                rprint(f"  Summer Average: {color + str(season_frequency)}", end="")
-
-                # Total Average
-                color = "[red]"
-                if total_frequency <= expected_frequency and total_frequency != 0:
-                    color = "[green]"
-                rprint(f"  Running Average: {color + str(total_frequency):<5}  ")
+                
+                activity_data = {
+                    "name": activity_name,
+                    "current_frequency": current_frequency,
+                    "expected_frequency": expected_frequency,
+                    "thirty_day_average": thirty_frequency,
+                    "season_average": season_frequency,
+                    "running_average": total_frequency
+                }
+                activities.append(activity_data)
+                
+        return {"activities": activities}
 
     def view_recommendations(self):
-
         today = []
         tomorrow = []
 
@@ -352,85 +347,150 @@ class FrequencyTracker:
                         if activity_name == freq_row[1]:                
                             expected_frequency = freq_row[2]
 
-                color = "[red]"
                 frequency = self.time_of_last_activity(activity_name)
+                activity_data = {
+                    "name": activity_name,
+                    "current_frequency": frequency,
+                    "expected_frequency": expected_frequency,
+                    "thirty_day_average": thirty_frequency,
+                    "season_average": season_frequency,
+                    "running_average": total_frequency
+                }
+                
                 if frequency >= expected_frequency or frequency < 0:
-                    today.append([activity_name, str(frequency), expected_frequency, str(thirty_frequency), str(season_frequency), str(total_frequency)])
+                    today.append(activity_data)
                 elif frequency == expected_frequency - 1:
-                    tomorrow.append([activity_name, str(frequency), expected_frequency, str(thirty_frequency), str(season_frequency), str(total_frequency)])
+                    tomorrow.append(activity_data)
 
-        print("\nTodays Recommendations")
-        for entry in today:
+        return {
+            "today": today,
+            "tomorrow": tomorrow
+        }
 
-            # Print Name
-            rprint(f"{entry[0]:<16} | ", end="")
-
-            # Current Track
-            color = "[green]"
-            if float(entry[1]) < 0 or float(entry[1]) > float(entry[2]):
-                color = "[red]"
-            rprint(f"{color + entry[1]:<3}", end="")  
-
-            # Expected Number
-            rprint(f"  [blue]{entry[2]:<3}", end="")
-
-            #30 Day Average
-            color = "[red]"
-            if float(entry[4]) <= float(entry[2]) and float(entry[4]) != 0:
-                color = "[green]"
-            rprint(f"  Thirty Day Average: {color + entry[4]:<5}", end="")  
-
-            #Summer Average
-            color = "[red]"
-            if float(entry[5]) <= float(entry[2]) and float(entry[5]) != 0:
-                color = "[green]"
-            rprint(f"  Summer Average: {color + entry[5]}", end="")
-
-            # Total Average
-            color = "[red]"
-            if float(entry[3]) <= float(entry[2]) and float(entry[3]) != 0:
-                    color = "[green]"
-            rprint(f"  Running Average: {color + entry[3]:<3}")
-
-
-        print("\nTomorrows Recommendations")
-        for entry in tomorrow:
-
-            # Print Name
-            rprint(f"{entry[0]:<16} | ", end="")
-
-            # Current Track
-            rprint(f"{"[green]" + entry[1]:<3}", end="")  
-
-            # Expected Number
-            rprint(f"  [blue]{entry[2]:<3}", end="")
-
-            #30 Day Average
-            color = "[red]"
-            if float(entry[4]) <= float(entry[2]) and float(entry[4]) != 0:
-                color = "[green]"
-            rprint(f"  Thirty Day Average: {color + entry[4]:<5}", end="")  
-
-            #Summer Average
-            color = "[red]"
-            if float(entry[5]) <= float(entry[2]) and float(entry[5]) != 0:
-                color = "[green]"
-            rprint(f"  Summer Average: {color + entry[5]}", end="")
-            
-            # Total Average
-            color = "[red]"
-            if float(entry[3]) <= float(entry[2]) and float(entry[3]) != 0:
-                    color = "[green]"
-            rprint(f"  Running Average: {color + entry[3]:<3}")
-
-    def delete_activity_by_id(self, activity_id: int):
+    def delete_activity(self, activity_type: str, date: str):
+        # Convert date string to datetime and format to match database format
+        date_obj = datetime.fromisoformat(date.replace('Z', '+00:00'))
+        date_str = date_obj.strftime('%Y-%m-%d')
+        
         with self.database_handler.activities_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 DELETE FROM activities
-                WHERE id = ?
-            """, (activity_id,))
+                WHERE type = ? AND date(time) = ?
+            """, (activity_type, date_str))
             conn.commit()
             if cursor.rowcount == 0:
-                return {"message": f"No activity with id {activity_id} found."}
-            return {"message": f"Activity with id {activity_id} deleted."}
+                return {"message": f"No activity found for {activity_type} on {date_str}"}
+            return {"message": f"Activity deleted for {activity_type} on {date_str}"}
+
+    def delete_activity_type(self, activity_type: str):
+        # Delete from activities table
+        with self.database_handler.activities_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM activities
+                WHERE type = ?
+            """, (activity_type,))
+            conn.commit()
+
+        # Delete from user_frequencies table
+        with self.database_handler.user_frequencies_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM user_frequencies
+                WHERE type = ?
+            """, (activity_type,))
+            conn.commit()
+
+        # Delete from user_calculations table
+        with self.database_handler.user_calculations_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM user_calculations
+                WHERE type = ?
+            """, (activity_type,))
+            conn.commit()
+
+        return {"message": f"Activity type {activity_type} deleted successfully"}
+
+    def add_activity_type(self, activity_type: str, winter: int, spring: int, summer: int, fall: int):
+        # Add to user_frequencies table
+        with self.database_handler.user_frequencies_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO user_frequencies (type, winter, summer, spring, fall)
+                VALUES (?, ?, ?, ?, ?)
+            """, (activity_type, winter, spring, summer, fall))
+            conn.commit()
+
+        # Add to user_calculations table
+        with self.database_handler.user_calculations_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO user_calculations (type, total, thirty, season)
+                VALUES (?, ?, ?, ?)
+            """, (activity_type, 0, 0, 0))
+            conn.commit()
+
+        return {"message": f"Activity type {activity_type} added with seasonal frequencies: Winter={winter}, Spring={spring}, Summer={summer}, Fall={fall}"}
+
+    def get_user_timezone(self):
+        with self.database_handler.user_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT timezone
+                FROM user
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            if row:
+                return {"timezone": row[0]}
+            return {"timezone": "UTC"}  # Default to UTC if no timezone is set
+
+    def update_timezone(self, timezone: str):
+        with self.database_handler.user_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE user
+                SET timezone = ?
+                WHERE id = 1
+            """, (timezone,))
+            conn.commit()
+            return {"message": f"Timezone updated to {timezone}"}
+
+    def get_activity_table(self):
+        activities = []
+        with self.database_handler.activities_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT type, time
+                FROM activities
+                ORDER BY time DESC
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                activities.append({
+                    "type": row[0],
+                    "time": row[1]
+                })
+        return {"activities": activities}
+
+    def get_goal_frequencies(self):
+        frequencies = []
+        with self.database_handler.user_frequencies_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT type, winter, spring, summer, fall
+                FROM user_frequencies
+                ORDER BY type
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                frequencies.append({
+                    "type": row[0],
+                    "winter": row[1],
+                    "spring": row[2],
+                    "summer": row[3],
+                    "fall": row[4]
+                })
+        return {"frequencies": frequencies}

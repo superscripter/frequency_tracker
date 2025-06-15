@@ -1,11 +1,881 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link href="output.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frequency Tracker</title>
+    <link href="output.css" rel="stylesheet">
 </head>
-<body class="min-h-screen bg-gray-100 flex items-center justify-center">
-  <div class="text-blue-600 bg-gray-300 p-6 rounded-lg shadow-lg">
-    Tailwind CSS is working!
-  </div>
+<body class="min-h-screen bg-slate-300" onload="getRecommendations()">
+    <!-- Banner -->
+    <header class="bg-sky-900 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <h1 class="text-3xl font-bold text-center">Frequency Tracker</h1>
+        </div>
+    </header>
+
+    <!-- Navigation Buttons -->
+    <main class="container mx-auto px-4 py-8">
+        <div class="flex flex-col items-center gap-8">
+            <!-- First group: Add Activity and Sync Strava -->
+            <div class="border-2 border-slate-500 rounded-lg p-8">
+                <div class="grid grid-cols-5 gap-4">
+                    <!-- Row 1: Add Activity -->
+                    <div class="flex flex-col items-center gap-4">
+                        <button onclick="addActivity()" class="bg-lime-600 hover:bg-lime-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                            Add Activity
+                        </button>
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <select id="activityType" class="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-500">
+                            <option value="">Select Activity Type</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <input type="date" id="activityDate" class="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-500">
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <button onclick="updateTimezone()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                            Set Timezone
+                        </button>
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <select id="timezoneSelect" class="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="America/Denver">Mountain Time (MT)</option>
+                            <option value="America/New_York">Eastern Time (ET)</option>
+                            <option value="America/Chicago">Central Time (CT)</option>
+                            <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                            <option value="America/Anchorage">Alaska Time (AKT)</option>
+                            <option value="Pacific/Honolulu">Hawaii Time (HT)</option>
+                        </select>
+                    </div>
+
+                    <!-- Row 2: Delete Activity -->
+                    <div class="flex flex-col items-center gap-4">
+                        <button onclick="deleteActivity()" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                            Delete Activity
+                        </button>
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <select id="deleteActivityType" class="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                            <option value="">Select Activity Type</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <input type="date" id="deleteActivityDate" class="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <button onclick="syncStrava()" class="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                            Sync Strava
+                        </button>
+                    </div>
+                    <div class="flex flex-col items-center gap-4">
+                        <div class="flex items-center gap-2">
+                            <input type="date" id="stravaSyncDate" class="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <div id="syncWheel" class="hidden">
+                                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Second group: Get Frequencies and Get Recommendations -->
+            <div class="border-2 border-slate-500 rounded-lg p-8 inline-flex flex-wrap justify-center gap-8">
+                <button onclick="getFrequencies()" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                    Get Frequencies
+                </button>
+                <button onclick="getRecommendations()" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                    Get Recommendations
+                </button>
+                <button onclick="getActivityTable()" class="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                    Get Activity Table
+                </button>
+                <button onclick="getGoalFrequencies()" class="bg-cyan-500 hover:bg-cyan-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                    Get Goal Frequencies
+                </button>
+            </div>
+        </div>
+
+        <!-- Response Display Area -->
+        <div id="response" class="mt-8 p-4 bg-white rounded-lg shadow-md hidden">
+            <pre class="whitespace-pre-wrap"></pre>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:8000';
+        const responseDiv = document.getElementById('response');
+        const responsePre = responseDiv.querySelector('pre');
+        const activityTypeSelect = document.getElementById('activityType');
+        const deleteActivityTypeSelect = document.getElementById('deleteActivityType');
+        const deleteActivityTypeDropdown = document.querySelector('select[class*="focus:ring-red-800"]');
+
+        // Function to populate activity type dropdowns
+        async function populateActivityTypes() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/frequencies/`);
+                const data = await response.json();
+                if (data.activities) {
+                    const activityTypes = data.activities.map(activity => activity.name);
+                    
+                    // Clear existing options except the first one
+                    while (activityTypeSelect.options.length > 1) {
+                        activityTypeSelect.remove(1);
+                    }
+                    while (deleteActivityTypeSelect.options.length > 1) {
+                        deleteActivityTypeSelect.remove(1);
+                    }
+                    
+                    // Add new options
+                    activityTypes.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type;
+                        option.textContent = type;
+                        activityTypeSelect.appendChild(option.cloneNode(true));
+                        deleteActivityTypeSelect.appendChild(option.cloneNode(true));
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching activity types:', error);
+            }
+        }
+
+        // Function to populate timezone dropdown with current timezone
+        async function populateTimezoneDropdown() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/user_timezone/`);
+                const data = await response.json();
+                const timezoneSelect = document.getElementById('timezoneSelect');
+                
+                if (timezoneSelect) {
+                    // Set the current timezone as selected
+                    timezoneSelect.value = data.timezone;
+                }
+            } catch (error) {
+                console.error('Error populating timezone dropdown:', error);
+            }
+        }
+
+        // Call populateActivityTypes when the page loads
+        populateActivityTypes();
+
+        async function showResponse(data) {
+            if (data.activities) {
+                // Create table HTML for frequencies
+                let tableHtml = `
+                    <table class="min-w-full bg-white border border-gray-300">
+                        <thead>
+                            <tr class="bg-sky-900 text-white">
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(0)" data-original-text="Activity Type">Activity Type ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(1)" data-original-text="Days Since Last">Days Since Last ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(2)" data-original-text="Goal Frequency">Goal Frequency ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(3)" data-original-text="30-Day Avg">30-Day Avg ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(4)" data-original-text="Season Avg">Season Avg ↕</th>
+                                <th class="px-4 py-2 border-b border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(5)" data-original-text="Total Avg">Total Avg ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                data.activities.forEach(activity => {
+                    // Helper function to determine cell color class
+                    const getColorClass = (value, goal) => {
+                        if (value === -1) return 'text-red-600 font-bold';
+                        if (value <= goal) return 'text-green-600 font-bold';
+                        return 'text-red-600 font-bold';
+                    };
+
+                    // Add grey background if Days Since Last is -1
+                    const rowClass = activity.current_frequency === -1 ? 'bg-gray-100' : 'hover:bg-gray-50';
+
+                    tableHtml += `
+                        <tr class="${rowClass}">
+                            <td class="px-4 py-2 border-b border-r border-gray-300">${activity.name}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center ${getColorClass(activity.current_frequency, activity.expected_frequency)}">${activity.current_frequency}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center text-blue-600 font-bold">${activity.expected_frequency}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center ${getColorClass(activity.thirty_day_average, activity.expected_frequency)}">${activity.thirty_day_average}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center ${getColorClass(activity.season_average, activity.expected_frequency)}">${activity.season_average}</td>
+                            <td class="px-4 py-2 border-b border-gray-300 text-center ${getColorClass(activity.running_average, activity.expected_frequency)}">${activity.running_average}</td>
+                        </tr>
+                    `;
+                });
+
+                tableHtml += `
+                        </tbody>
+                    </table>
+                `;
+
+                responseDiv.innerHTML = tableHtml;
+                
+                // Sort by Goal Frequency (column index 2) by default in ascending order
+                setTimeout(() => {
+                    sortDirection = -1;
+                    currentSortColumn = 2;
+                    sortTable(2);
+                }, 0);
+            } else if (data.today || data.tomorrow) {
+                // Create table HTML for recommendations
+                let tableHtml = '';
+                
+                // Helper function to create a table for a section
+                const createTable = (title, activities) => {
+                    if (activities.length === 0) return '';
+                    
+                    let sectionHtml = `
+                        <h2 class="text-xl font-bold mb-4">${title}</h2>
+                        <table class="min-w-full bg-white border border-gray-300 mb-8">
+                            <thead>
+                                <tr class="bg-sky-900 text-white">
+                                    <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(0)" data-original-text="Activity Type">Activity Type ↕</th>
+                                    <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(1)" data-original-text="Days Since Last">Days Since Last ↕</th>
+                                    <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(2)" data-original-text="Goal Frequency">Goal Frequency ↕</th>
+                                    <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(3)" data-original-text="30-Day Avg">30-Day Avg ↕</th>
+                                    <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(4)" data-original-text="Season Avg">Season Avg ↕</th>
+                                    <th class="px-4 py-2 border-b border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(5)" data-original-text="Total Avg">Total Avg ↕</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+                    activities.forEach(activity => {
+                        // Helper function to determine cell color class
+                        const getColorClass = (value, goal) => {
+                            if (value === -1) return 'text-red-600 font-bold';
+                            if (value <= goal) return 'text-green-600 font-bold';
+                            return 'text-red-600 font-bold';
+                        };
+
+                        // Add grey background if Days Since Last is -1
+                        const rowClass = activity.current_frequency === -1 ? 'bg-gray-100' : 'hover:bg-gray-50';
+
+                        sectionHtml += `
+                            <tr class="${rowClass}" data-diff="${activity.current_frequency - activity.expected_frequency}">
+                                <td class="px-4 py-2 border-b border-r border-gray-300">${activity.name}</td>
+                                <td class="px-4 py-2 border-b border-r border-gray-300 text-center ${getColorClass(activity.current_frequency, activity.expected_frequency)}">${activity.current_frequency}</td>
+                                <td class="px-4 py-2 border-b border-r border-gray-300 text-center text-blue-600 font-bold">${activity.expected_frequency}</td>
+                                <td class="px-4 py-2 border-b border-r border-gray-300 text-center ${getColorClass(activity.thirty_day_average, activity.expected_frequency)}">${activity.thirty_day_average}</td>
+                                <td class="px-4 py-2 border-b border-r border-gray-300 text-center ${getColorClass(activity.season_average, activity.expected_frequency)}">${activity.season_average}</td>
+                                <td class="px-4 py-2 border-b border-gray-300 text-center ${getColorClass(activity.running_average, activity.expected_frequency)}">${activity.running_average}</td>
+                            </tr>
+                        `;
+                    });
+
+                    sectionHtml += `
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    return sectionHtml;
+                };
+
+                // Create tables for both today and tomorrow sections, showing today first
+                if (data.today) {
+                    if (data.today.length > 0) {
+                        tableHtml += createTable('Today\'s Recommendations', data.today);
+                    } else {
+                        tableHtml += '<h2 class="text-xl font-bold mb-4">No Recommendations for Today</h2>';
+                    }
+                }
+                if (data.tomorrow) {
+                    if (data.tomorrow.length > 0) {
+                        tableHtml += createTable('Tomorrow\'s Recommendations', data.tomorrow);
+                    } else {
+                        tableHtml += '<h2 class="text-xl font-bold mb-4">No Recommendations for Tomorrow</h2>';
+                    }
+                }
+
+                responseDiv.innerHTML = tableHtml;
+                
+                // Sort by difference between Days Since Last and Goal Frequency
+                setTimeout(() => {
+                    const tables = document.querySelectorAll('table');
+                    tables.forEach(table => {
+                        const tbody = table.querySelector('tbody');
+                        const rows = Array.from(tbody.querySelectorAll('tr'));
+                        
+                        // Sort rows by the difference between Days Since Last and Goal Frequency
+                        rows.sort((a, b) => {
+                            const aDiff = parseFloat(a.getAttribute('data-diff'));
+                            const bDiff = parseFloat(b.getAttribute('data-diff'));
+                            return bDiff - aDiff; // Sort in descending order (largest difference first)
+                        });
+                        
+                        // Reorder the rows in the table
+                        rows.forEach(row => tbody.appendChild(row));
+                    });
+                }, 0);
+            } else if (data.message) {
+                // Display success message
+                responseDiv.innerHTML = `
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                        <span class="block sm:inline">${data.message}</span>
+                    </div>
+                `;
+            } else {
+                // Display raw JSON for any other response
+                responsePre.textContent = JSON.stringify(data, null, 2);
+            }
+            responseDiv.classList.remove('hidden');
+        }
+
+        // Add sorting functionality
+        let sortDirection = 1; // 1 for ascending, -1 for descending
+        let currentSortColumn = -1; // Track which column is currently being sorted
+
+        function sortTable(columnIndex) {
+            const table = responseDiv.querySelector('table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const header = table.querySelectorAll('th')[columnIndex];
+            const originalText = header.getAttribute('data-original-text');
+            
+            // Toggle sort direction if clicking the same column
+            if (currentSortColumn === columnIndex) {
+                sortDirection *= -1;
+            } else {
+                sortDirection = 1;
+                currentSortColumn = columnIndex;
+            }
+            
+            // Update header text
+            header.textContent = originalText + (sortDirection === 1 ? ' ↑' : ' ↓');
+            
+            // Sort rows
+            rows.sort((a, b) => {
+                const aValue = a.cells[columnIndex].textContent;
+                const bValue = b.cells[columnIndex].textContent;
+                
+                // Special handling for date column (index 1)
+                if (columnIndex === 1) {
+                    const aDate = new Date(aValue);
+                    const bDate = new Date(bValue);
+                    return (aDate - bDate) * sortDirection;
+                }
+                
+                // Default string comparison for other columns
+                return aValue.localeCompare(bValue) * sortDirection;
+            });
+            
+            // Reorder rows in the table
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        async function handleError(error) {
+            console.error('Error:', error);
+            responsePre.textContent = `Error: ${error.message}`;
+            responseDiv.classList.remove('hidden');
+        }
+
+        async function addActivity() {
+            try {
+                const activityType = activityTypeSelect.value;
+                const activityDate = document.getElementById('activityDate').value;
+                if (!activityType) {
+                    alert('Please select an activity type');
+                    return;
+                }
+
+                let url = `${API_BASE_URL}/add_activity/?activity_type=${encodeURIComponent(activityType)}`;
+                if (activityDate) {
+                    // Get user's timezone
+                    const response = await fetch(`${API_BASE_URL}/user_timezone/`);
+                    const data = await response.json();
+                    const userTimezone = data.timezone;
+
+                    // Create date string in user's timezone at noon
+                    const dateStr = `${activityDate}T12:00:00`;
+                    const date = new Date(dateStr);
+                    
+                    // Convert to UTC while preserving the noon time in user's timezone
+                    const utcDate = new Date(date.toLocaleString('en-US', { timeZone: userTimezone }));
+                    url += `&time=${encodeURIComponent(utcDate.toISOString())}`;
+                }
+
+                const response = await fetch(url, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResponse(data);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        async function deleteActivity() {
+            try {
+                const activityType = document.getElementById('deleteActivityType').value;
+                const activityDate = document.getElementById('deleteActivityDate').value;
+                if (!activityType || !activityDate) {
+                    alert('Please select both activity type and date');
+                    return;
+                }
+
+                // Get user's timezone
+                const response = await fetch(`${API_BASE_URL}/user_timezone/`);
+                const data = await response.json();
+                const userTimezone = data.timezone;
+
+                // Create date string in user's timezone at noon
+                const dateStr = `${activityDate}T12:00:00`;
+                const date = new Date(dateStr);
+                
+                // Convert to UTC while preserving the noon time in user's timezone
+                const utcDate = new Date(date.toLocaleString('en-US', { timeZone: userTimezone }));
+                const url = `${API_BASE_URL}/delete_activity/?activity_type=${encodeURIComponent(activityType)}&time=${encodeURIComponent(utcDate.toISOString())}`;
+
+                const deleteResponse = await fetch(url, {
+                    method: 'DELETE'
+                });
+                const deleteData = await deleteResponse.json();
+                showResponse(deleteData);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        // Function to set default date for activity date pickers (today)
+        async function setDefaultActivityDates() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/user_timezone/`);
+                const data = await response.json();
+                const userTimezone = data.timezone || 'America/Denver';
+                
+                // Get today's date in user's timezone
+                const today = new Date();
+                const options = { timeZone: userTimezone };
+                const userDate = new Date(today.toLocaleString('en-US', options));
+                
+                // Format date as YYYY-MM-DD
+                const year = userDate.getFullYear();
+                const month = String(userDate.getMonth() + 1).padStart(2, '0');
+                const day = String(userDate.getDate()).padStart(2, '0');
+                const formattedDate = `${year}-${month}-${day}`;
+                
+                const activityDate = document.getElementById('activityDate');
+                const deleteActivityDate = document.getElementById('deleteActivityDate');
+                
+                if (activityDate && deleteActivityDate) {
+                    activityDate.value = formattedDate;
+                    deleteActivityDate.value = formattedDate;
+                }
+            } catch (error) {
+                console.error('Error setting default dates:', error);
+                // Fallback to UTC if there's an error
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                const formattedDate = `${year}-${month}-${day}`;
+                
+                const activityDate = document.getElementById('activityDate');
+                const deleteActivityDate = document.getElementById('deleteActivityDate');
+                
+                if (activityDate && deleteActivityDate) {
+                    activityDate.value = formattedDate;
+                    deleteActivityDate.value = formattedDate;
+                }
+            }
+        }
+
+        // Function to set default date for Strava sync (20 days ago)
+        function setDefaultStravaSyncDate() {
+            const date = new Date();
+            date.setDate(date.getDate() - 20);
+            const formattedDate = date.toISOString().split('T')[0];
+            
+            const stravaSyncDate = document.getElementById('stravaSyncDate');
+            if (stravaSyncDate) {
+                stravaSyncDate.value = formattedDate;
+            }
+        }
+
+        // Call initialization functions when page loads
+        window.addEventListener('load', function() {
+            populateTimezoneDropdown();
+            setDefaultStravaSyncDate();
+            setDefaultActivityDates();
+        });
+
+        async function syncStrava() {
+            try {
+                const syncWheel = document.getElementById('syncWheel');
+                syncWheel.classList.remove('hidden');
+                
+                const since = document.getElementById('stravaSyncDate').value;
+                const response = await fetch(`${API_BASE_URL}/sync/?since=${encodeURIComponent(since)}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                // Show success message
+                responseDiv.innerHTML = `
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                        <span class="block sm:inline">Strava activities synced successfully</span>
+                    </div>
+                `;
+                responseDiv.classList.remove('hidden');
+                
+            } catch (error) {
+                handleError(error);
+            } finally {
+                const syncWheel = document.getElementById('syncWheel');
+                syncWheel.classList.add('hidden');
+            }
+        }
+
+        async function getFrequencies() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/frequencies/`);
+                const data = await response.json();
+                showResponse(data);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        async function getRecommendations() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/recommendations/`);
+                const data = await response.json();
+                showResponse(data);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        async function getActivityTable() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/activity_table/`);
+                const data = await response.json();
+                
+                // Get user's timezone
+                const timezoneResponse = await fetch(`${API_BASE_URL}/user_timezone/`);
+                const timezoneData = await timezoneResponse.json();
+                const userTimezone = timezoneData.timezone;
+                
+                // Sort activities by time in descending order (newest first)
+                data.activities.sort((a, b) => {
+                    const dateA = new Date(a.time);
+                    const dateB = new Date(b.time);
+                    return dateB.getTime() - dateA.getTime();  // This will put newest dates first
+                });
+                
+                let tableHTML = `
+                    <table class="min-w-full bg-white border border-gray-300 rounded-lg overflow-hidden">
+                        <thead>
+                            <tr class="bg-sky-900 text-white">
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(0)" data-original-text="Activity Type">Activity Type ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(1)" data-original-text="Time">Time ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.activities.forEach(activity => {
+                    // Convert UTC time to user's timezone
+                    const date = new Date(activity.time);
+                    const formattedDate = date.toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZone: userTimezone
+                    });
+                    
+                    tableHTML += `
+                        <tr class="hover:bg-gray-50" oncontextmenu="showDeleteActivityMenu(event, '${activity.type}', '${activity.time}')" title="Right-click to delete activity">
+                            <td class="px-4 py-2 border-b border-r border-gray-300">${activity.type}</td>
+                            <td class="px-4 py-2 border-b border-gray-300">${formattedDate}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                
+                responseDiv.innerHTML = tableHTML;
+                responseDiv.classList.remove('hidden');
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        // Function to show delete activity menu
+        function showDeleteActivityMenu(event, activityType, activityTime) {
+            event.preventDefault();
+            
+            // Remove any existing context menu
+            const existingMenu = document.getElementById('contextMenu');
+            if (existingMenu) {
+                existingMenu.remove();
+            }
+            
+            // Create context menu
+            const menu = document.createElement('div');
+            menu.id = 'contextMenu';
+            menu.className = 'fixed bg-white border border-gray-300 rounded-lg shadow-lg z-50';
+            menu.style.left = `${event.pageX}px`;
+            menu.style.top = `${event.pageY}px`;
+            
+            // Add delete option
+            const deleteOption = document.createElement('div');
+            deleteOption.className = 'px-4 py-2 hover:bg-red-100 cursor-pointer text-red-600';
+            deleteOption.textContent = 'Delete Activity';
+            deleteOption.onclick = () => {
+                deleteActivity(activityType, activityTime);
+                menu.remove();
+            };
+            
+            menu.appendChild(deleteOption);
+            document.body.appendChild(menu);
+            
+            // Close menu when clicking outside
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }
+
+        // Function to delete activity
+        async function deleteActivity(activityType, activityTime) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete_activity/?activity_type=${encodeURIComponent(activityType)}&activity_time=${encodeURIComponent(activityTime)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                // Refresh the activity table and frequencies
+                getActivityTable();
+                getFrequencies();
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        async function getGoalFrequencies() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/goal_frequencies/`);
+                const data = await response.json();
+                
+                // Create form HTML for adding new goal frequency
+                const formHtml = `
+                    <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                        <h3 class="text-lg font-semibold mb-4">Add New Activity Type</h3>
+                        <div class="grid grid-cols-6 gap-4 items-end">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Activity Type</label>
+                                <input type="text" id="newActivityType" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Winter Goal</label>
+                                <input type="number" id="winterGoal" min="0" max="366" class="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="0-366">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Spring Goal</label>
+                                <input type="number" id="springGoal" min="0" max="366" class="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="0-366">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Summer Goal</label>
+                                <input type="number" id="summerGoal" min="0" max="366" class="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="0-366">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Fall Goal</label>
+                                <input type="number" id="fallGoal" min="0" max="366" class="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="0-366">
+                            </div>
+                            <div>
+                                <button onclick="addNewGoalFrequency()" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-md transition duration-300 ease-in-out transform hover:scale-105">
+                                    Add Activity Type
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Create table HTML for goal frequencies
+                let tableHtml = `
+                    <table class="min-w-full bg-white border border-gray-300">
+                        <thead>
+                            <tr class="bg-sky-900 text-white">
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(0)" data-original-text="Activity Type">Activity Type ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(1)" data-original-text="Winter">Winter ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(2)" data-original-text="Spring">Spring ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(3)" data-original-text="Summer">Summer ↕</th>
+                                <th class="px-4 py-2 border-b border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(4)" data-original-text="Fall">Fall ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                data.frequencies.forEach(frequency => {
+                    tableHtml += `
+                        <tr class="hover:bg-gray-50" oncontextmenu="showDeleteActivityTypeMenu(event, '${frequency.type}')" title="Right-click to delete activity type">
+                            <td class="px-4 py-2 border-b border-r border-gray-300">${frequency.type}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${frequency.winter}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${frequency.spring}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${frequency.summer}</td>
+                            <td class="px-4 py-2 border-b border-gray-300 text-center">${frequency.fall}</td>
+                        </tr>
+                    `;
+                });
+
+                tableHtml += `
+                        </tbody>
+                    </table>
+                `;
+
+                // Combine table and form
+                responseDiv.innerHTML = tableHtml + formHtml;
+                responseDiv.classList.remove('hidden');
+                
+                // Sort by Activity Type (column index 0) by default
+                setTimeout(() => {
+                    sortDirection = 1;
+                    currentSortColumn = 0;
+                    sortTable(0);
+                }, 0);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        // Function to show delete activity type menu
+        function showDeleteActivityTypeMenu(event, activityType) {
+            event.preventDefault();
+            
+            // Remove any existing context menu
+            const existingMenu = document.getElementById('contextMenu');
+            if (existingMenu) {
+                existingMenu.remove();
+            }
+            
+            // Create context menu
+            const menu = document.createElement('div');
+            menu.id = 'contextMenu';
+            menu.className = 'fixed bg-white border border-gray-300 rounded-lg shadow-lg z-50';
+            menu.style.left = `${event.pageX}px`;
+            menu.style.top = `${event.pageY}px`;
+            
+            // Add delete option
+            const deleteOption = document.createElement('div');
+            deleteOption.className = 'px-4 py-2 hover:bg-red-100 cursor-pointer text-red-600';
+            deleteOption.textContent = 'Delete Activity Type';
+            deleteOption.onclick = () => {
+                deleteActivityType(activityType);
+                menu.remove();
+            };
+            
+            menu.appendChild(deleteOption);
+            document.body.appendChild(menu);
+            
+            // Close menu when clicking outside
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }
+
+        // Function to delete activity type
+        async function deleteActivityType(activityType) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete_activity_type/?activity_type=${encodeURIComponent(activityType)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                // Refresh the goal frequencies table and activity type dropdowns
+                getGoalFrequencies();
+                populateActivityTypes();
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        // Function to add new goal frequency
+        async function addNewGoalFrequency() {
+            try {
+                const activityType = document.getElementById('newActivityType').value;
+                const winterGoal = document.getElementById('winterGoal').value;
+                const springGoal = document.getElementById('springGoal').value;
+                const summerGoal = document.getElementById('summerGoal').value;
+                const fallGoal = document.getElementById('fallGoal').value;
+                
+                if (!activityType || !winterGoal || !springGoal || !summerGoal || !fallGoal) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+
+                const goals = [winterGoal, springGoal, summerGoal, fallGoal].map(Number);
+                if (goals.some(goal => isNaN(goal) || goal < 0 || goal > 366)) {
+                    alert('All goals must be numbers between 0 and 366');
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE_URL}/add_activity_type/?activity_type=${encodeURIComponent(activityType)}&winter=${winterGoal}&spring=${springGoal}&summer=${summerGoal}&fall=${fallGoal}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                // Clear the input fields
+                document.getElementById('newActivityType').value = '';
+                document.getElementById('winterGoal').value = '';
+                document.getElementById('springGoal').value = '';
+                document.getElementById('summerGoal').value = '';
+                document.getElementById('fallGoal').value = '';
+                
+                // Refresh the table
+                getGoalFrequencies();
+            } catch (error) {
+                handleError(error);
+            }
+        }
+
+        async function updateTimezone() {
+            try {
+                const timezone = document.getElementById('timezoneSelect').value;
+                const response = await fetch(`${API_BASE_URL}/update_timezone/?timezone=${encodeURIComponent(timezone)}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Show success message
+                responseDiv.innerHTML = `
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                        <span class="block sm:inline">${data.message}</span>
+                    </div>
+                `;
+                responseDiv.classList.remove('hidden');
+                
+                // Refresh the activity table to show times in new timezone
+                getActivityTable();
+            } catch (error) {
+                handleError(error);
+            }
+        }
+    </script>
 </body>
 </html>
