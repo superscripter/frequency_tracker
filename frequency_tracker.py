@@ -21,6 +21,9 @@ Allow the user to set a date that strava synce shoudl go back to, go to 20 days 
 
 ---
 
+npm run dev
+uvicorn main:app --reload
+
 Support for seasonal expectations
 Support for tier 2 or monthly goals
 Be able to put dates that shouldnt matter to the calculation (sick time, vacation time, injury, etc.)
@@ -138,6 +141,7 @@ class FrequencyTracker:
             activity = Activity(type=strava_activity['sport_type'], time=strava_activity['start_date'])
             self.add_activity(activity)
         self.compute_frequency_averages()
+        return {"message": f"Successfully synced {len(activities)} activities from Strava"}
 
     def add_activity(self, activity):             
         with self.database_handler.activities_connection() as conn:

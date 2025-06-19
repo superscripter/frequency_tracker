@@ -502,7 +502,10 @@
                 const syncWheel = document.getElementById('syncWheel');
                 syncWheel.classList.remove('hidden');
                 
-                const since = document.getElementById('stravaSyncDate').value;
+                const dateInput = document.getElementById('stravaSyncDate').value;
+                // Format the date to ISO format
+                const since = dateInput ? `${dateInput}T00:00:00Z` : null;
+                
                 const response = await fetch(`${API_BASE_URL}/sync/?since=${encodeURIComponent(since)}`, {
                     method: 'POST'
                 });
@@ -568,7 +571,17 @@
                     <table class="min-w-full bg-white border border-gray-300 rounded-lg overflow-hidden">
                         <thead>
                             <tr class="bg-sky-900 text-white">
-                                <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(0)" data-original-text="Activity Type">Activity Type ↕</th>
+                                <th class="px-4 py-2 border-b border-r border-gray-300">
+                                    <div class="flex flex-col">
+                                        <span>Activity Type</span>
+                                        <select id="activityTypeFilter" class="mt-2 text-black text-sm rounded" onchange="filterActivityTable()">
+                                            <option value="">All Activities</option>
+                                            ${Array.from(new Set(data.activities.map(a => a.type))).sort().map(type => 
+                                                `<option value="${type}">${type}</option>`
+                                            ).join('')}
+                                        </select>
+                                    </div>
+                                </th>
                                 <th class="px-4 py-2 border-b border-r border-gray-300 cursor-pointer hover:bg-sky-800" onclick="sortTable(1)" data-original-text="Time">Time ↕</th>
                             </tr>
                         </thead>
@@ -588,7 +601,7 @@
                     });
                     
                     tableHTML += `
-                        <tr class="hover:bg-gray-50" oncontextmenu="showDeleteActivityMenu(event, '${activity.type}', '${activity.time}')" title="Right-click to delete activity">
+                        <tr class="hover:bg-gray-50" oncontextmenu="showDeleteActivityMenu(event, '${activity.type}', '${activity.time}')" title="Right-click to delete activity" data-activity-type="${activity.type}">
                             <td class="px-4 py-2 border-b border-r border-gray-300">${activity.type}</td>
                             <td class="px-4 py-2 border-b border-gray-300">${formattedDate}</td>
                         </tr>
@@ -607,40 +620,55 @@
             }
         }
 
+        function filterActivityTable() {
+            const filterValue = document.getElementById('activityTypeFilter').value;
+            const rows = responseDiv.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const activityType = row.getAttribute('data-activity-type');
+                if (!filterValue || activityType === filterValue) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
         // Function to show delete activity menu
         function showDeleteActivityMenu(event, activityType, activityTime) {
             event.preventDefault();
             
-            // Remove any existing context menu
-            const existingMenu = document.getElementById('contextMenu');
+            // Remove any existing menu
+            const existingMenu = document.getElementById('deleteActivityMenu');
             if (existingMenu) {
                 existingMenu.remove();
             }
             
-            // Create context menu
+            // Create menu
             const menu = document.createElement('div');
-            menu.id = 'contextMenu';
-            menu.className = 'fixed bg-white border border-gray-300 rounded-lg shadow-lg z-50';
+            menu.id = 'deleteActivityMenu';
+            menu.className = 'fixed bg-white shadow-lg rounded-lg py-2 z-50';
             menu.style.left = `${event.pageX}px`;
             menu.style.top = `${event.pageY}px`;
             
             // Add delete option
             const deleteOption = document.createElement('div');
-            deleteOption.className = 'px-4 py-2 hover:bg-red-100 cursor-pointer text-red-600';
+            deleteOption.className = 'px-4 py-2 hover:bg-red-100 text-red-600 cursor-pointer';
             deleteOption.textContent = 'Delete Activity';
             deleteOption.onclick = () => {
                 deleteActivity(activityType, activityTime);
                 menu.remove();
             };
-            
             menu.appendChild(deleteOption);
+            
+            // Add to document
             document.body.appendChild(menu);
             
-            // Close menu when clicking outside
-            document.addEventListener('click', function closeMenu(e) {
+            // Remove menu when clicking outside
+            document.addEventListener('click', function removeMenu(e) {
                 if (!menu.contains(e.target)) {
                     menu.remove();
-                    document.removeEventListener('click', closeMenu);
+                    document.removeEventListener('click', removeMenu);
                 }
             });
         }
@@ -648,7 +676,7 @@
         // Function to delete activity
         async function deleteActivity(activityType, activityTime) {
             try {
-                const response = await fetch(`${API_BASE_URL}/delete_activity/?activity_type=${encodeURIComponent(activityType)}&activity_time=${encodeURIComponent(activityTime)}`, {
+                const response = await fetch(`${API_BASE_URL}/delete_activity/?activity_type=${encodeURIComponent(activityType)}&time=${encodeURIComponent(activityTime)}`, {
                     method: 'DELETE'
                 });
                 
@@ -656,9 +684,18 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
-                // Refresh the activity table and frequencies
+                const data = await response.json();
+                
+                // Show success message
+                responseDiv.innerHTML = `
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                        <span class="block sm:inline">${data.message}</span>
+                    </div>
+                `;
+                responseDiv.classList.remove('hidden');
+                
+                // Refresh the activity table
                 getActivityTable();
-                getFrequencies();
             } catch (error) {
                 handleError(error);
             }
