@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Authentication</title>
+    <link href="output.css" rel="stylesheet">
+</head>
+<body class="min-h-screen bg-slate-100 flex items-center justify-center">
+    <div class="w-full max-w-md p-8 bg-white rounded-lg shadow-lg">
+        <h2 class="text-2xl font-bold mb-6 text-center">Welcome to Frequency Tracker</h2>
+        <div id="auth-tabs" class="flex justify-center mb-6">
+            <button id="show-signin" class="px-4 py-2 font-semibold text-sky-700 border-b-2 border-sky-700">Sign In</button>
+            <button id="show-signup" class="px-4 py-2 font-semibold text-gray-500">Sign Up</button>
+        </div>
+        <!-- Sign In Form -->
+        <form id="signin-form" class="space-y-4">
+            <div>
+                <label for="signin-email" class="block text-sm font-medium">Email</label>
+                <input type="email" id="signin-email" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+            </div>
+            <div>
+                <label for="signin-password" class="block text-sm font-medium">Password</label>
+                <input type="password" id="signin-password" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+            </div>
+            <button type="submit" class="w-full bg-sky-700 text-white py-2 rounded-lg font-semibold hover:bg-sky-800 transition">Sign In</button>
+        </form>
+        <!-- Sign Up Form -->
+        <form id="signup-form" class="space-y-4 hidden">
+            <div>
+                <label for="signup-email" class="block text-sm font-medium">Email</label>
+                <input type="email" id="signup-email" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+            </div>
+            <div>
+                <label for="signup-password" class="block text-sm font-medium">Password</label>
+                <input type="password" id="signup-password" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+            </div>
+            <div>
+                <label for="signup-name" class="block text-sm font-medium">Name</label>
+                <input type="text" id="signup-name" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+            </div>
+            <button type="submit" class="w-full bg-sky-700 text-white py-2 rounded-lg font-semibold hover:bg-sky-800 transition">Sign Up</button>
+        </form>
+        <!-- Sign Out Button -->
+        <div id="signout-section" class="mt-8 hidden text-center">
+            <button id="signout-btn" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition">Sign Out</button>
+        </div>
+        <div id="auth-message" class="mt-4 text-center text-sm text-red-600"></div>
+    </div>
+    <script>
+        // Tab switching logic
+        const signinForm = document.getElementById('signin-form');
+        const signupForm = document.getElementById('signup-form');
+        const showSignin = document.getElementById('show-signin');
+        const showSignup = document.getElementById('show-signup');
+        const signoutSection = document.getElementById('signout-section');
+        const authMessage = document.getElementById('auth-message');
+
+        showSignin.onclick = () => {
+            signinForm.classList.remove('hidden');
+            signupForm.classList.add('hidden');
+            showSignin.classList.add('text-sky-700', 'border-b-2', 'border-sky-700');
+            showSignup.classList.remove('text-sky-700', 'border-b-2', 'border-sky-700');
+        };
+        showSignup.onclick = () => {
+            signupForm.classList.remove('hidden');
+            signinForm.classList.add('hidden');
+            showSignup.classList.add('text-sky-700', 'border-b-2', 'border-sky-700');
+            showSignin.classList.remove('text-sky-700', 'border-b-2', 'border-sky-700');
+        };
+
+        // Placeholder JS for form submission
+        signinForm.onsubmit = (e) => {
+            e.preventDefault();
+            // TODO: Add AJAX call to sign in endpoint
+            authMessage.textContent = 'Sign in logic not implemented.';
+        };
+        signupForm.onsubmit = (e) => {
+            e.preventDefault();
+            // TODO: Add AJAX call to sign up endpoint
+            authMessage.textContent = 'Sign up logic not implemented.';
+        };
+        document.getElementById('signout-btn').onclick = () => {
+            // TODO: Add AJAX call to sign out endpoint
+            authMessage.textContent = 'Sign out logic not implemented.';
+        };
+    </script>
+</body>
+</html> 

@@ -1,0 +1,34 @@
+# Environment variables
+.env
+.env.local
+.env.test
+.env.production
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Coverage reports
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so

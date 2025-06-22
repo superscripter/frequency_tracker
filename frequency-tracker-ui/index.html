@@ -4,18 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frequency Tracker</title>
-    <link href="output.css" rel="stylesheet">
+    <link href="/static/output.css" rel="stylesheet">
 </head>
 <body class="min-h-screen bg-slate-300" onload="getRecommendations()">
-    <!-- Banner -->
-    <header class="bg-sky-900 text-white shadow-lg">
-        <div class="container mx-auto px-4 py-6">
-            <h1 class="text-3xl font-bold text-center">Frequency Tracker</h1>
+
+    <div id="notification-area" class="fixed top-5 right-5 z-50"></div>
+
+    <header class="bg-sky-900 shadow-lg">
+        <div class="container mx-auto px-4 py-6 grid grid-cols-3 items-center">   
+          <div class="flex justify-center">
+            <button id="main-tracker-btn" class="text-3xl font-bold  text-white text-center bg-transparent border-none outline-none cursor-pointer">
+              Frequency Tracker
+            </button>
+          </div>
+        <div class="flex justify-center text-sky-900" style="color: #0c4a6e; background-color: #0c4a6e;">
+                buffer
         </div>
-    </header>
+          <div class="flex justify-center">
+            <a id="user-profile-btn"
+               href="auth.html"
+               class="bg-sky-900 text-white font-semibold px-4 py-2 rounded-lg shadow hover:bg-sky-100 transition border-2 border-slate-300">
+              Sign In Or Make A Profile!
+            </a>
+          </div>
+        </div>
+      </header>
 
     <!-- Navigation Buttons -->
-    <main class="container mx-auto px-4 py-8">
+    <main id="main-tracker" class="container mx-auto px-4 py-8">
         <div class="flex flex-col items-center gap-8">
             <!-- First group: Add Activity and Sync Strava -->
             <div class="border-2 border-slate-500 rounded-lg p-8">
@@ -95,11 +111,63 @@
                     Get Goal Frequencies
                 </button>
             </div>
+
+            <!-- Auth/Notification Message Area -->
+            <div id="message-area" class="mt-4 text-center"></div>
         </div>
 
         <!-- Response Display Area -->
         <div id="response" class="mt-8 p-4 bg-white rounded-lg shadow-md hidden">
             <pre class="whitespace-pre-wrap"></pre>
+        </div>
+    </main>
+
+    <main id="auth-content" class="hidden flex justify-center mt-8">
+        <div class="border-2 border-slate-500 rounded-lg p-8 inline-flex flex-col">
+            <div id="auth-tabs" class="flex justify-center mb-6">
+                <button id="show-signin" class="px-4 py-2 font-semibold text-sky-900">Sign In</button>
+                <button id="show-signup" class="px-4 py-2 font-semibold text-sky-900">Create New Profile</button>
+            </div>
+            
+            <!-- Auth-specific message area -->
+            <div id="auth-message-area" class="mt-4 text-center"></div>
+            
+            <form id="signin-form" class="space-y-4">
+                <div class="flex justify-center items-center">
+                    <label for="signin-email" class="block text-sm font-medium mr-4 text-right w-24">Email</label>
+                    <input type="email" id="signin-email" class="w-128 max-w-2xl px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+                </div>
+                <div class="flex justify-center items-center">
+                    <label for="signin-password" class="block text-sm font-medium mr-4 text-right w-24">Password</label>
+                    <input type="password" id="signin-password" class="w-128 max-w-2xl px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+                </div>
+                <div class="flex justify-center items-center">
+                    <button type="submit" class="bg-sky-700 text-grey px-4 py-2 rounded-lg font-semibold hover:bg-sky-800 transition">Sign In</button>
+                </div>
+            </form>
+            <form id="signup-form" class="space-y-4 hidden">
+                <div class="flex justify-center items-center">
+                    <label for="signup-name" class="block text-sm font-medium mr-4 text-right w-24">Name</label>
+                    <input type="text" id="signup-name" class="w-128 max-w-2xl px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+                </div>
+                <div class="flex justify-center items-center">
+                    <label for="signup-email" class="block text-sm font-medium mr-4 text-right w-24">Email</label>
+                    <input type="email" id="signup-email" class="w-128 max-w-2xl px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+                </div>
+                <div class="flex justify-center items-center">
+                    <label for="signup-password" class="block text-sm font-medium mr-4 text-right w-24">Password</label>
+                    <input type="password" id="signup-password" class="w-128 max-w-2xl px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" required>
+                </div>
+                <div class="flex justify-center items-center">
+                    <button type="submit" class="bg-sky-700 text-grey px-4 py-2 rounded-lg font-semibold hover:bg-sky-800 transition">Sign Up</button>
+                </div>
+            </form>
+            <!-- User Profile Buttons -->
+            <div id="signout-section" class="flex flex-col items-center gap-4 mt-8 hidden">
+                <button id="signout-btn" class="bg-sky-700 text-white px-4 py-2 rounded-lg font-semibold hover:bg-sky-800 transition w-48">Sign Out</button>
+                <button id="link-strava-btn" class="bg-orange-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-orange-600 transition w-48">Link Strava</button>
+                <button onclick="deleteAccount()" class="bg-red-700 hover:bg-red-800 text-white font-semibold py-2 px-4 rounded-lg transition w-48">Delete Account</button>
+            </div>
         </div>
     </main>
 
@@ -110,13 +178,20 @@
         const activityTypeSelect = document.getElementById('activityType');
         const deleteActivityTypeSelect = document.getElementById('deleteActivityType');
         const deleteActivityTypeDropdown = document.querySelector('select[class*="focus:ring-red-800"]');
+        const messageArea = document.getElementById('message-area');
+        const signoutSection = document.getElementById('signout-section');
+        const authTabs = document.getElementById('auth-tabs');
 
         // Function to populate activity type dropdowns
         async function populateActivityTypes() {
+            if( await getUserId() == -1)
+                return;
             try {
                 const response = await fetch(`${API_BASE_URL}/frequencies/`);
-                const data = await response.json();
-                if (data.activities) {
+                const data = await response.json();        
+                if(data == null) 
+                    return;
+                if (data && data.activities) {
                     const activityTypes = data.activities.map(activity => activity.name);
                     
                     // Clear existing options except the first one
@@ -137,20 +212,25 @@
                     });
                 }
             } catch (error) {
-                console.error('Error fetching activity types:', error);
-            }
+                console.error('Error populating activity types:', error);
+            }                       
         }
 
         // Function to populate timezone dropdown with current timezone
         async function populateTimezoneDropdown() {
+            if( await getUserId() == -1)
+                return;
             try {
                 const response = await fetch(`${API_BASE_URL}/user_timezone/`);
-                const data = await response.json();
+                const timezone = await response.json();
                 const timezoneSelect = document.getElementById('timezoneSelect');
                 
                 if (timezoneSelect) {
                     // Set the current timezone as selected
-                    timezoneSelect.value = data.timezone;
+                    timezoneSelect.value = timezone;
+                }
+                else {
+                    timezoneSelect.value = "America/New_York";
                 }
             } catch (error) {
                 console.error('Error populating timezone dropdown:', error);
@@ -160,7 +240,25 @@
         // Call populateActivityTypes when the page loads
         populateActivityTypes();
 
+        function showEmptyResponse(message) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.innerHTML = `
+                <div class="text-center p-8 bg-white rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-700">${message}</h3>
+                </div>
+            `;
+            responseDiv.classList.remove('hidden');
+        }
+
         async function showResponse(data) {
+            if (!data || (Array.isArray(data) && data.length === 0) || (data.activities && data.activities.length === 0)) {
+                const nameResponse = await fetch(`${API_BASE_URL}/user_name/`);
+                const nameData = await nameResponse.json();
+                const userName = nameData.user_name || 'Current User';
+                showEmptyResponse(`No Data Found For ${userName}'s Profile`);
+                return;
+            }
+
             if (data.activities) {
                 // Create table HTML for frequencies
                 let tableHtml = `
@@ -380,8 +478,7 @@
                 if (activityDate) {
                     // Get user's timezone
                     const response = await fetch(`${API_BASE_URL}/user_timezone/`);
-                    const data = await response.json();
-                    const userTimezone = data.timezone;
+                    const userTimezone = await response.json();
 
                     // Create date string in user's timezone at noon
                     const dateStr = `${activityDate}T12:00:00`;
@@ -396,7 +493,7 @@
                     method: 'POST'
                 });
                 const data = await response.json();
-                showResponse(data);
+                await showResponse(data);
             } catch (error) {
                 handleError(error);
             }
@@ -413,8 +510,7 @@
 
                 // Get user's timezone
                 const response = await fetch(`${API_BASE_URL}/user_timezone/`);
-                const data = await response.json();
-                const userTimezone = data.timezone;
+                const userTimezone = await response.json();
 
                 // Create date string in user's timezone at noon
                 const dateStr = `${activityDate}T12:00:00`;
@@ -428,7 +524,7 @@
                     method: 'DELETE'
                 });
                 const deleteData = await deleteResponse.json();
-                showResponse(deleteData);
+                await showResponse(deleteData);
             } catch (error) {
                 handleError(error);
             }
@@ -439,7 +535,9 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/user_timezone/`);
                 const data = await response.json();
-                const userTimezone = data.timezone || 'America/Denver';
+                let userTimezone = 'America/Denver';
+                if( data != null)
+                    userTimezone = data;
                 
                 // Get today's date in user's timezone
                 const today = new Date();
@@ -514,12 +612,22 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
-                // Show success message
-                responseDiv.innerHTML = `
-                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">Strava activities synced successfully</span>
-                    </div>
-                `;
+                const data = await response.json();
+                
+                // Show appropriate message based on success/error
+                if (data.success) {
+                    responseDiv.innerHTML = `
+                        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">${data.message}</span>
+                        </div>
+                    `;
+                } else {
+                    responseDiv.innerHTML = `
+                        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">${data.message}</span>
+                        </div>
+                    `;
+                }
                 responseDiv.classList.remove('hidden');
                 
             } catch (error) {
@@ -531,16 +639,20 @@
         }
 
         async function getFrequencies() {
+            if( await getUserId() == -1) 
+                return;
             try {
                 const response = await fetch(`${API_BASE_URL}/frequencies/`);
                 const data = await response.json();
-                showResponse(data);
+                await showResponse(data);
             } catch (error) {
                 handleError(error);
             }
         }
 
         async function getRecommendations() {
+            if( await getUserId() == -1) 
+                return;
             try {
                 const response = await fetch(`${API_BASE_URL}/recommendations/`);
                 const data = await response.json();
@@ -549,19 +661,38 @@
                 handleError(error);
             }
         }
+        
+
+        async function getUserId() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/user_id/`);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                return -1;
+            }
+        }
 
         async function getActivityTable() {
             try {
                 const response = await fetch(`${API_BASE_URL}/activity_table/`);
-                const data = await response.json();
+                const activities = await response.json();
+
+                if(activities == []) {
+                    responseDiv.innerHTML = `
+                        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">No activities found</span>
+                        </div>
+                    `;
+                    responseDiv.classList.remove('hidden');
+                }
                 
                 // Get user's timezone
                 const timezoneResponse = await fetch(`${API_BASE_URL}/user_timezone/`);
-                const timezoneData = await timezoneResponse.json();
-                const userTimezone = timezoneData.timezone;
+                const userTimezone = await timezoneResponse.json();
                 
                 // Sort activities by time in descending order (newest first)
-                data.activities.sort((a, b) => {
+                activities.sort((a, b) => {
                     const dateA = new Date(a.time);
                     const dateB = new Date(b.time);
                     return dateB.getTime() - dateA.getTime();  // This will put newest dates first
@@ -576,7 +707,7 @@
                                         <span>Activity Type</span>
                                         <select id="activityTypeFilter" class="mt-2 text-black text-sm rounded" onchange="filterActivityTable()">
                                             <option value="">All Activities</option>
-                                            ${Array.from(new Set(data.activities.map(a => a.type))).sort().map(type => 
+                                            ${Array.from(new Set(activities.map(a => a.type))).sort().map(type => 
                                                 `<option value="${type}">${type}</option>`
                                             ).join('')}
                                         </select>
@@ -587,8 +718,8 @@
                         </thead>
                         <tbody>
                 `;
-                
-                data.activities.forEach(activity => {
+
+                activities.forEach(activity => {
                     // Convert UTC time to user's timezone
                     const date = new Date(activity.time);
                     const formattedDate = date.toLocaleString('en-US', {
@@ -703,8 +834,8 @@
 
         async function getGoalFrequencies() {
             try {
-                const response = await fetch(`${API_BASE_URL}/goal_frequencies/`);
-                const data = await response.json();
+                const response = await fetch(`${API_BASE_URL}/activity_types/`);
+                const activityTypes = await response.json();
                 
                 // Create form HTML for adding new goal frequency
                 const formHtml = `
@@ -755,14 +886,24 @@
                         <tbody>
                 `;
 
-                data.frequencies.forEach(frequency => {
+                if(activityTypes == []) {
+                    responseDiv.innerHTML = `
+                        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">No activity types found</span>
+                        </div>
+                    `;
+                    responseDiv.classList.remove('hidden');
+                    return;
+                }
+
+                activityTypes.forEach(activityType => {
                     tableHtml += `
-                        <tr class="hover:bg-gray-50" oncontextmenu="showDeleteActivityTypeMenu(event, '${frequency.type}')" title="Right-click to delete activity type">
-                            <td class="px-4 py-2 border-b border-r border-gray-300">${frequency.type}</td>
-                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${frequency.winter}</td>
-                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${frequency.spring}</td>
-                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${frequency.summer}</td>
-                            <td class="px-4 py-2 border-b border-gray-300 text-center">${frequency.fall}</td>
+                        <tr class="hover:bg-gray-50" oncontextmenu="showDeleteActivityTypeMenu(event, '${activityType.type}')" title="Right-click to delete activity type">
+                            <td class="px-4 py-2 border-b border-r border-gray-300">${activityType.type}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${activityType.winter}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${activityType.spring}</td>
+                            <td class="px-4 py-2 border-b border-r border-gray-300 text-center">${activityType.summer}</td>
+                            <td class="px-4 py-2 border-b border-gray-300 text-center">${activityType.fall}</td>
                         </tr>
                     `;
                 });
@@ -913,6 +1054,298 @@
                 handleError(error);
             }
         }
+
+        // Toggle between main and auth content
+        const userProfileBtn = document.getElementById('user-profile-btn');
+        const mainContent = document.getElementById('main-tracker');
+        const authContent = document.getElementById('auth-content');
+        let showingAuth = false;
+        const mainTrackerBtn = document.getElementById('main-tracker-btn');
+
+        userProfileBtn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            const userId = await getUserId();
+
+            // Configure the auth screen before showing it
+            if (userId !== -1) {
+                // User is LOGGED IN: show only sign-out
+                authTabs.classList.add('hidden');
+                signinForm.classList.add('hidden');
+                signupForm.classList.add('hidden');
+                signoutSection.classList.remove('hidden');
+            } else {
+                // User is LOGGED OUT: show sign-in/sign-up forms
+                authTabs.classList.remove('hidden');
+                signinForm.classList.remove('hidden');
+                signupForm.classList.add('hidden');
+                signoutSection.classList.add('hidden');
+            }
+
+            // Show the auth view and hide the main content
+            mainContent.classList.add('hidden');
+            authContent.classList.remove('hidden');
+            
+            messageArea.textContent = ''; // Clear messages when toggling views
+            // Clear auth message area when toggling views
+            document.getElementById('auth-message-area').textContent = '';
+        });
+
+        mainTrackerBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            mainContent.classList.remove('hidden');
+            authContent.classList.add('hidden');
+        });
+
+        // Auth tab switching logic
+        const signinForm = document.getElementById('signin-form');
+        const signupForm = document.getElementById('signup-form');
+        const showSignin = document.getElementById('show-signin');
+        const showSignup = document.getElementById('show-signup');
+        const signupNameField = document.getElementById('signup-name');
+
+        showSignin.addEventListener('click', function() {
+            signinForm.classList.remove('hidden');
+            signupForm.classList.add('hidden');
+            showSignin.classList.add('text-sky-700');
+            showSignup.classList.remove('text-sky-700');
+            // Hide the name field when switching to sign in
+            signupNameField.classList.add('hidden');
+            // Clear auth message area
+            document.getElementById('auth-message-area').textContent = '';
+        });
+        showSignup.addEventListener('click', function() {
+            signupForm.classList.remove('hidden');
+            signinForm.classList.add('hidden');
+            showSignup.classList.add('text-sky-700');
+            showSignin.classList.remove('text-sky-700');
+            // Show the name field when creating a new profile
+            signupNameField.classList.remove('hidden');
+            // Clear auth message area
+            document.getElementById('auth-message-area').textContent = '';
+        });
+
+        function showNotification(message, isSuccess = true) {
+            const notificationArea = document.getElementById('notification-area');
+            const notification = document.createElement('div');
+            const bgColor = isSuccess ? 'bg-green-500' : 'bg-red-500';
+            notification.className = `p-4 mb-2 text-white rounded-lg shadow-lg ${bgColor}`;
+            notification.textContent = message;
+
+            notificationArea.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.transition = 'opacity 0.5s';
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 500);
+            }, 3000); // Remove after 3 seconds
+        }
+
+        // Handle Sign In
+        signinForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('signin-email').value;
+            const password = document.getElementById('signin-password').value;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/sign_in/?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`, {
+                    method: 'POST',
+                    credentials: 'include' // Include cookies in the request
+                });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    await updateUserStatus();
+                    mainContent.classList.remove('hidden');
+                    authContent.classList.add('hidden');
+                    showingAuth = false;
+                    showNotification('Sign in successful!');
+
+                    // Update user info on the main page
+                    await populateTimezoneDropdown();
+                    await setDefaultStravaSyncDate();
+                    await setDefaultActivityDates();
+                } else {
+                    const authMessageArea = document.getElementById('auth-message-area');
+                    authMessageArea.textContent = data.detail || data.message || 'Sign in failed.';
+                    authMessageArea.className = 'mt-4 text-center text-red-600';
+                }
+            } catch (error) {
+                const authMessageArea = document.getElementById('auth-message-area');
+                authMessageArea.textContent = 'An error occurred. Please try again.';
+                authMessageArea.className = 'mt-4 text-center text-red-600';
+            }
+        });
+
+        // Handle Sign Up
+        signupForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const name = document.getElementById('signup-name').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; // Get browser timezone
+
+            // Basic email validation
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                messageArea.textContent = 'Please enter a valid email address.';
+                messageArea.className = 'mt-4 text-center text-red-600';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/create_user?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}&timezone=${encodeURIComponent(timezone)}`, {
+                    method: 'POST',
+                    credentials: 'include' // Include cookies in the request
+                });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    await updateUserStatus();
+                    mainContent.classList.remove('hidden');
+                    authContent.classList.add('hidden');
+                    showingAuth = false;
+                    showNotification('Sign up successful! Welcome!');
+                } else {
+                    const authMessageArea = document.getElementById('auth-message-area');
+                    authMessageArea.textContent = data.detail || data.message || 'Sign up failed.';
+                    authMessageArea.className = 'mt-4 text-center text-red-600';
+                }
+            } catch (error) {
+                const authMessageArea = document.getElementById('auth-message-area');
+                authMessageArea.textContent = 'An error occurred. Please try again.';
+                authMessageArea.className = 'mt-4 text-center text-red-600';
+            }
+        });
+
+        async function updateUserStatus() {
+            const userId = await getUserId();
+            if (userId !== -1) {
+                try {
+                    const nameResponse = await fetch(`${API_BASE_URL}/user_name/`);
+                    const nameData = await nameResponse.json();
+                    userProfileBtn.textContent = `${nameData}'s Profile`;
+                } catch (error) {
+                    userProfileBtn.textContent = 'User Profile';
+                }
+            } else {
+                userProfileBtn.textContent = 'Sign In Or Make A Profile!';
+            }
+        }
+
+        function showAuthView() {
+            mainContent.classList.add('hidden');
+            authContent.classList.remove('hidden');
+            showingAuth = true;
+            // Reset auth forms to default state
+            authTabs.classList.remove('hidden');
+            signinForm.classList.remove('hidden');
+            signupForm.classList.add('hidden');
+            signoutSection.classList.add('hidden');
+            // Clear any auth messages
+            document.getElementById('auth-message-area').textContent = '';
+        }
+
+        document.getElementById('signout-btn').addEventListener('click', async function() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/sign_out`, { 
+                    method: 'POST',
+                    credentials: 'include' // Include cookies in the request
+                });
+                const data = await response.json();
+                if (data.success) {
+                    userProfileBtn.textContent = 'Sign In Or Make A Profile!';
+                    showNotification('You have been signed out.');
+                    // Switch back to the main tracker view
+                    mainContent.classList.remove('hidden');
+                    authContent.classList.add('hidden');
+                } else {
+                    showNotification('Sign out failed. Please try again.', false);
+                }
+            } catch (error) {
+                showNotification('Sign out failed. Please try again.', false);
+            }
+        });
+
+        // Check authentication status on page load
+        async function checkAuthentication() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/check_auth`, {
+                    credentials: 'include' // Include cookies in the request
+                });
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    // User is authenticated, show main app view
+                    await updateUserStatus();
+                    mainContent.classList.remove('hidden');
+                    authContent.classList.add('hidden');
+                    
+                    // Update user info on the main page
+                    await populateTimezoneDropdown();
+                    await setDefaultStravaSyncDate();
+                    await setDefaultActivityDates();
+                } else {
+                    console.log("User is not authenticated, showing auth view");
+                    showAuthView();
+                }
+            } catch (error) {
+                console.error('Error checking authentication:', error);
+                showAuthView();
+            }
+        }
+
+        // Handle Strava linking
+        document.getElementById('link-strava-btn').addEventListener('click', async function() {
+            const userId = await getUserId();
+            if (userId === -1) {
+                showNotification('Please sign in first before linking your Strava account.', false);
+                return;
+            }
+            window.location.href = `${API_BASE_URL}/strava/authorize`;
+        });
+
+        // Check for Strava link status on page load
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('strava_link_success')) {
+            showNotification('Strava account linked successfully!', true);
+            // Remove the query parameter from the URL without reloading the page
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (urlParams.has('strava_link_error')) {
+            const error = urlParams.get('strava_link_error');
+            if (error === 'access_denied') {
+                showNotification('Strava account linking was cancelled.', false);
+            } else {
+                showNotification('Failed to link Strava account.', false);
+            }
+            // Remove the query parameter from the URL without reloading the page
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // Check authentication on page load
+        checkAuthentication();
+
+        async function deleteAccount() {
+            if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/delete_user`, {
+                        method: 'DELETE',
+                        credentials: 'include' // Include cookies in the request
+                    });
+                    const data = await response.json();
+                    if (response.ok && data.success) {
+                        showNotification('Account deleted successfully.');
+                        // Log out the user and reset UI
+                        userProfileBtn.textContent = 'Sign In Or Make A Profile!';
+                        mainContent.classList.remove('hidden');
+                        authContent.classList.add('hidden');
+                    } else {
+                        showNotification(data.message || 'Failed to delete account.', false);
+                    }
+                } catch (error) {
+                    showNotification('An error occurred. Please try again.', false);
+                }
+            }
+        }
+
     </script>
 </body>
 </html>

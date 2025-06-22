@@ -6,29 +6,25 @@ from database_handler import DatabaseHandler
 from calculation_handler import CalculationHandler
 from datetime import datetime, timezone, timedelta
 import pytz
+import requests
 
 """
-Working on...
-
-
-
-Plan to deploy on Render (free tier works great for FastAPI)
-
-Later, connect it to PostgreSQL (e.g., Supabase, Railway, or Render's own DB service)
-
-
-Allow the user to set a date that strava synce shoudl go back to, go to 20 days ago by default
-
----
-
 npm run dev
 uvicorn main:app --reload
+
+Future Ideas:
 
 Support for seasonal expectations
 Support for tier 2 or monthly goals
 Be able to put dates that shouldnt matter to the calculation (sick time, vacation time, injury, etc.)
 Be able to calculate the average from a specific date
 Give a "start" date for when you want an activity to being being calcualted from (for total avg)
+
+    monthly_activity_bank = { "Drawing" : [1, 0, 0],
+                            "Ice Skating" : [1, 0, 0],
+                            "Coding" : [1, 0, 0]
+                            }
+
 """
 
 #activities.db
@@ -46,455 +42,322 @@ class Activity(BaseModel):
     time: str  # format: YYYY-MM-DDTHH:MM:SSZ example : 2025-02-24T20:16:13Z
 
 
-class FrequencyTracker:
+class FrequencyTracker(DatabaseHandler, StravaHandler, CalculationHandler):
 
-    # Class attributes
-    strava_handler = StravaHandler()
-    database_handler = DatabaseHandler()
-    calculation_handler = CalculationHandler()
-    csv_file = ''
-    activities_db = ''
-    user_db = ''
-    user_calculations_db = ''
-    user_frequencies_db = ''
-
-    # Temp User Data
-
-    monthly_activity_bank = { "Drawing" : [1, 0, 0],
-                            "Ice Skating" : [1, 0, 0],
-                            "Coding" : [1, 0, 0]
-                            }
+    current_user_id = -1
 
     # Create access token on construction
-    def __init__(self):
-        self.activities_db = "activities.db"
-        self.user_db = "user.db"
-        self.user_calculations_db = "user_calculations.db"
-        self.user_frequencies_db = "user_frequencies.db"
-        self.database_handler = DatabaseHandler(self.activities_db, self.user_db, self.user_calculations_db, self.user_frequencies_db)
-        self.database_handler.initialize()
+    def __init__(self, db_url = ''):
+        DatabaseHandler.__init__(self, db_url)
+        StravaHandler.__init__(self)
+        CalculationHandler.__init__(self)
 
-        # Make sure the user time zone is set
-        with self.database_handler.user_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, timezone
-                FROM user
-            """,)
-            row = cursor.fetchone() #{"id": row[0], "timezone": row[1]}
-            if not row:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO user (timezone)
-                    VALUES (?)
-                """, ("MST",))
-                conn.commit()
-
-        expected_frequencies = { "Swim" : 4,
-                "Ride" : 4,
-                "Run" : 4,
-                "WeightTraining" : 3,
-                "Pilates" : 5,
-                "Yoga" : 4,
-                "Reading" : 7,
-                "Woodworking" : 7,
-                "Chess" : 6,
-                "Piano" : 3}
-
-        # Make sure the user frequencies are set
-        with self.database_handler.user_frequencies_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, type, winter, summer, spring, fall
-                FROM user_frequencies
-            """,)
-            row = cursor.fetchone()
-            if not row:
-                for activity_name, expected_frequency in expected_frequencies.items():
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO user_frequencies (type, winter, summer, spring, fall)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (activity_name, expected_frequency, expected_frequency, expected_frequency, expected_frequency))
-                    conn.commit()
-
-        # Make sure the user calculations are set
-        with self.database_handler.user_calculations_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, type, total, thirty, season
-                FROM user_calculations
-            """,)
-            row = cursor.fetchone()
-            if not row:
-                for activity_name in expected_frequencies:
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO user_calculations (type, total, thirty, season)
-                        VALUES (?, ?, ?, ?)
-                    """, (activity_name, 0, 0, 0))
-                    conn.commit()
-
+    def ensure_valid_user(self):
+        return self.current_user_id != -1
 
     def sync_strava(self, since: str = None):
-        # This function does not attempt to trim the activities to only new ones
-        # Duplicates are handled on the sql end
-        activities = self.strava_handler.fetch_strava_activities(since)
-        for strava_activity in activities:
-            activity = Activity(type=strava_activity['sport_type'], time=strava_activity['start_date'])
-            self.add_activity(activity)
-        self.compute_frequency_averages()
-        return {"message": f"Successfully synced {len(activities)} activities from Strava"}
 
-    def add_activity(self, activity):             
-        with self.database_handler.activities_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR IGNORE INTO activities (type, time)
-                VALUES (?, ?)
-            """, (activity.type, activity.time))
-            conn.commit()
-            """if cursor.rowcount == 0:
-                return {"message": "Duplicate activity"}
-            else:
-                return {"message": "Added activity successfully"}"""
+        if not self.ensure_valid_user():
+            return {"success": False, "message": "No user is signed in"}
+
+        # Get the user's Strava tokens
+        tokens = self.get_strava_tokens()
+        if not tokens:
+            return {"success": False, "message": "No Strava account linked. Please link your Strava account first."}
+
+        try:
+            # This function does not attempt to trim the activities to only new ones
+            # Duplicates are handled on the sql end
+            activities = self._fetch_strava_activities(tokens["access_token"], since)
+
+            for strava_activity in activities:
+                activity = Activity(type=strava_activity['sport_type'], time=strava_activity['start_date'])
+                self.add_activity(activity)
+            print(f"Synced {len(activities)} activities from Strava")
             self.compute_frequency_averages()
-
-    def time_of_last_activity(self, activity_type):
-        with self.database_handler.activities_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, type, time
-                FROM activities
-                WHERE type = ?
-                ORDER BY time DESC
-                LIMIT 1
-            """, (activity_type,))
-            row = cursor.fetchone() #{"id": row[0], "type": row[1], "time": row[2]}
-            if row:
-                return self.calculation_handler.days_ago(row[2])
+            return {"success": True, "message": f"Successfully synced {len(activities)} activities from Strava"}
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                # Token has expired, try to refresh it
+                try:
+                    print("Access token expired, attempting to refresh...")
+                    refresh_result = self.refresh_access_token(tokens["refresh_token"])
+                    
+                    if refresh_result["success"]:
+                        new_tokens = refresh_result["data"]
+                        # Update the database with new tokens
+                        self.update_strava_tokens(
+                            new_tokens["access_token"],
+                            new_tokens["refresh_token"],
+                            new_tokens.get("expires_at")
+                        )
+                        
+                        # Retry the sync with the new token
+                        print("Token refreshed successfully, retrying sync...")
+                        activities = self._fetch_strava_activities(new_tokens["access_token"], since)
+                        
+                        for strava_activity in activities:
+                            activity = Activity(type=strava_activity['sport_type'], time=strava_activity['start_date'])
+                            self.add_activity(activity)
+                        print(f"Synced {len(activities)} activities from Strava")
+                        self.compute_frequency_averages()
+                        return {"success": True, "message": f"Successfully synced {len(activities)} activities from Strava"}
+                    else:
+                        return {"success": False, "message": "Failed to refresh Strava access token. Please re-link your Strava account."}
+                except Exception as refresh_error:
+                    print(f"Error refreshing token: {refresh_error}")
+                    return {"success": False, "message": "Failed to refresh Strava access token. Please re-link your Strava account."}
             else:
-                return -1
+                return {"success": False, "message": f"Error syncing Strava activities: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "message": f"Error syncing Strava activities: {str(e)}"}
+
+    def get_activities(self):
+        return self._get_activities(self.current_user_id)
+
+    def add_activity(self, activity: Activity):  
+
+        if not self.ensure_valid_user():
+            return
+        # Ensure we have a UTC time
+        
+        timestamp = datetime.fromisoformat(activity.time)
+        if timestamp.utcoffset() is not None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+        activity_type_id = self._get_activity_type_id(self.current_user_id, activity.type)
+        if activity_type_id == -1:
+            return
+
+        self._add_activity(self.current_user_id, activity_type_id, timestamp)
+        self._invalidate_user_calculation(self.current_user_id, activity_type_id)
+
+        
+    def delete_activity(self, activity: Activity):
+        
+        if not self.ensure_valid_user():
+            return
+        
+        # Ensure we have a UTC time
+        timestamp = datetime.fromisoformat(activity.time)
+        if timestamp.utcoffset() is not None:
+            timestamp = timestamp.replace(tzinfo=None)
+
+        activity_type_id = self._get_activity_type_id(self.current_user_id, activity.type)
+        self._remove_activity(self.current_user_id, activity_type_id, timestamp)
+        self._invalidate_user_calculation(self.current_user_id, activity_type_id)
+        
+    def time_of_last_activity(self, type_id):
+        
+        if not self.ensure_valid_user():
+            return
+        
+        most_recent_activity = self._get_most_recent_activity(self.current_user_id, type_id)
+        if most_recent_activity:
+            return self._days_ago(most_recent_activity[3], self._get_user_timezone(self.current_user_id))
+        else:
+            return -1
+
+    def get_user_timezone(self):
+                
+        if not self.ensure_valid_user():
+            return
+        
+        return self._get_user_timezone(self.current_user_id)
+
+    def set_user_timezone(self, timezone: str):
+        self._set_user_timezone(self.current_user_id, timezone)
+
+    def get_current_user_id(self):
+        return self.current_user_id
+
+    def sign_in(self, email, password):
+        result = self._sign_in(email, password)
+        if result["success"]:
+            self.current_user_id = result["id"]
+        return result
+
+    def sign_out(self):
+        self.current_user_id = -1
+        return {"success": True, "message": "User signed out"}
+
+    def create_user(self, email, password, name, timezone):
+        hashed_password = self.hash_password(password)
+        result = self._create_user(email, hashed_password, name, timezone)
+        if result["success"]:
+            self.current_user_id = result["id"]
+            print(f"Created user {self.current_user_id}")
+        return result
+
+    def delete_user(self):
+        if not self.ensure_valid_user():
+            return {"success": False, "message": "No user is signed in."}
+        
+        user_id_to_delete = self.current_user_id
+        # Sign the user out first
+        self.current_user_id = -1
+        
+        return self._remove_user(user_id_to_delete)
+
+    def get_user_name(self):
+        if not self.ensure_valid_user():
+            return None
+        return self._get_user_name(self.current_user_id)
+
+    def set_user_timezone(self, timezone: str):              
+        if not self.ensure_valid_user():
+            return
+        self._set_user_timezone(self.current_user_id, timezone)
+
+    def add_activity_type(self, activity_type: str, winter: int, spring: int, summer: int, fall: int):
+                
+        if not self.ensure_valid_user():
+            return
+        
+        activity_type_id = self._create_activity_type(self.current_user_id, activity_type, winter, spring, summer, fall)
+        if activity_type_id is not None:
+            self._add_user_calculation(self.current_user_id, activity_type_id, 0, 0, 0, True)
+
+    def delete_activity_type(self, activity_type: str):
+                
+        if not self.ensure_valid_user():
+            return
+        
+        activity_type_id = self._get_activity_type_id(self.current_user_id, activity_type)
+        self._remove_activity_type(self.current_user_id, activity_type)
+
+    def get_activity_types(self):
+        return self._get_user_activity_types(self.current_user_id)
+
+    def store_strava_tokens(self, user_id, athlete_id, access_token, refresh_token, expires_at):
+        return self._store_strava_tokens(user_id, athlete_id, access_token, refresh_token, expires_at)
+
+    def update_strava_tokens(self, access_token, refresh_token, expires_at):
+        if not self.ensure_valid_user():
+            return {"success": False, "message": "No user is signed in"}
+        return self._update_strava_tokens(self.current_user_id, access_token, refresh_token, expires_at)
+
+    def get_strava_tokens(self):
+        if not self.ensure_valid_user():
+            return None
+        return self._get_strava_tokens(self.current_user_id)
 
     def compute_frequency_averages(self):
+                
+        if not self.ensure_valid_user():
+            return
         
-        # Find the earliest time for each activity
-        # Count all activities between that time and today
-        # Compute the average
-        # Initialize activity counter from user_frequencies table
-        activity_counter = {}
-        activity_set = set()
-        
-        with self.database_handler.user_frequencies_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT type
-                FROM user_frequencies
-            """)
-            rows = cursor.fetchall()
-            for row in rows:
-                activity_type = row[0]
-                activity_counter[activity_type] = [0, 0, 0, 0]  # [total, thirty_days, season, earliest_time]
-                activity_set.add(activity_type)
-
         # 30 Days ago
         local_timestamp = datetime.now()
         rollback = local_timestamp.hour * 3600 + local_timestamp.minute*60 + local_timestamp.second
         difference = timedelta(seconds=(30*24*3600 + rollback))
         thirty_days_ago = datetime.now(timezone.utc) - difference
-
-        # Get user timezone
-        user_timezone = pytz.timezone("UTC")
-        with self.database_handler.user_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, timezone
-                FROM user
-            """)
-            row = cursor.fetchone()
-            user_timezone = pytz.timezone(row[1])
         
         # Determine current season and set season start date
-        current_date = datetime.now(user_timezone)
-        current_month = current_date.month
-        
-        if 3 <= current_month < 6:  # Spring (March-May)
-            season_start = user_timezone.localize(datetime(current_date.year, 3, 1), is_dst=None)
-        elif 6 <= current_month < 9:  # Summer (June-August)
-            season_start = user_timezone.localize(datetime(current_date.year, 6, 1), is_dst=None)
-        elif 9 <= current_month < 12:  # Fall (September-November)
-            season_start = user_timezone.localize(datetime(current_date.year, 9, 1), is_dst=None)
-        else:  # Winter (December-February)
-            season_start = user_timezone.localize(datetime(current_date.year, 12, 1), is_dst=None)
+        user_timezone = self._get_user_timezone(self.current_user_id)
+        season_start = self._get_season_start(user_timezone)
 
-        # Process activities in chronological order
-        with self.database_handler.activities_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, type, time
-                FROM activities
-                ORDER BY time ASC
-            """)
-            rows = cursor.fetchall()
-            activities = [Activity(type=row[1], time=row[2]) for row in rows]
-            
+        # Setup a counter container for each invalid type in the calculations table
+        invalid_calculations = self._get_invalid_user_calculations(self.current_user_id)
+        for calculation in invalid_calculations:
+
+            # Get all activities for this type
+            total_activity_span = 0
+            total_activity_count = 0
+            thirty_day_activity_count = 0
+            seasonal_activity_count = 0
+
+            activities = self._get_activities_by_type(self.current_user_id, calculation["type_id"])
             for activity in activities:
-                # Record earliest time for each activity type
-                if activity.type in activity_set:
-                    activity_counter[activity.type][3] = activity.time
-                    activity_set.remove(activity.type)
 
-                # Update counters for each average
-                if activity.type in activity_counter:
-                    activity_counter[activity.type][0] += 1  # Increment total counter
-                    if datetime.fromisoformat(activity.time) > thirty_days_ago:
-                        activity_counter[activity.type][1] += 1  # Increment 30 day counter
-                    if datetime.fromisoformat(activity.time) > season_start:
-                        activity_counter[activity.type][2] += 1  # Increment seasonal counter
+                # Calculate the total span of the activities
+                if total_activity_span == 0:
+                    total_activity_span = self._days_ago(activity["time"], user_timezone)
 
+                total_activity_count += 1
+                if activity["time"] > thirty_days_ago:
+                    thirty_day_activity_count += 1
+                if activity["time"] > season_start:
+                    seasonal_activity_count += 1
 
-        # Wrtie out the averages calculated to our user_calculation db
-        for activity_name, activity_data in activity_counter.items():
+            # Calculate the averages
+            total_frequency = -1
+            if(total_activity_count > 0):
+                total_frequency = round(total_activity_span / total_activity_count, 2)
+            thirty_frequency = -1
+            if(thirty_day_activity_count > 0):
+                thirty_frequency = round(30 / thirty_day_activity_count, 2)
+            season_frequency = -1
+            if(seasonal_activity_count > 0):
+                season_frequency = round(self._days_ago(season_start, user_timezone) / seasonal_activity_count, 2)
 
-            # If we no activity at all was found leave early
-            if not activity_data[3]:
-                continue
-
-            total_frequency = round(self.calculation_handler.days_ago(activity_data[3]) / activity_data[0], 2)
-
-            # If we have activities within 30 days calculate the average
-            thirty_frequency = 0
-            if activity_data[1] != 0:
-                thirty_frequency = round(30 / activity_data[1], 2)
-
-            season_frequency = 0
-            if activity_data[2] != 0:
-                season_frequency = round(self.calculation_handler.days_ago(season_start.isoformat()) / activity_data[2], 2)
-
-            with self.database_handler.user_calculations_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE user_calculations
-                    SET total = ?, thirty = ?, season = ?
-                    WHERE type = ?
-                """, (total_frequency, thirty_frequency, season_frequency, activity_name))
-                conn.commit()
-            
-
-    def view_frequencies(self):
-        activities = []
+            # Update out the averages calculated
+            self._update_user_calculation(self.current_user_id, calculation["type_id"], total_frequency, thirty_frequency, season_frequency)
+     
+    def get_frequencies(self):
+                
+        if not self.ensure_valid_user():
+            return
         
-        with self.database_handler.user_calculations_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, type, total, thirty, season
-                FROM user_calculations
-            """,)
-            rows = cursor.fetchall() 
-            for row in rows:  #{"id": row[0], "type": row[1], "total": row[2], "thirty": row[3], "season": row[4]}
-                activity_name = row[1]
-                total_frequency = float(row[2])
-                thirty_frequency = float(row[3])
-                season_frequency = float(row[4])
+        # Ensure we have the latest averages
+        self.compute_frequency_averages()
 
-                # Find expected frequency
-                expected_frequency = 0
-                with self.database_handler.user_frequencies_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT id, type, winter, summer, spring, fall
-                        FROM user_frequencies
-                    """,)
-                    freq_rows = cursor.fetchall() 
-                    for freq_row in freq_rows:  #{"id": row[0], "type": row[1], "winter": row[2], "spring": row[3], "summer": row[4], "fall": row[5]}
-                        if activity_name == freq_row[1]:                
-                            expected_frequency = int(freq_row[2])
+        frequencies = []
+        activity_types = self._get_user_activity_types(self.current_user_id)
+        season = self._get_season(datetime.now(pytz.timezone(self._get_user_timezone(self.current_user_id) )))
 
-                current_frequency = self.time_of_last_activity(activity_name)
+        for user_calculation in self._get_user_calculations(self.current_user_id):
+
+            type_id = user_calculation["id"]
+            total_frequency = user_calculation["total"]
+            thirty_frequency = user_calculation["thirty"]
+            season_frequency = user_calculation["season"]
+
+            # Find expected frequency
+            expected_average_frequency = 0
+            expected_frequency = 0
+
+            for activity_type in activity_types:
+                if activity_type["id"] == type_id:
+                    expected_frequency = activity_type[season]
+                    expected_average_frequency = (activity_type["winter"] + activity_type["spring"] + activity_type["summer"] + activity_type["fall"]) / 4
+                    break
+  
+            current_frequency = self.time_of_last_activity(type_id)
+            type_name = self._get_activity_type_name(type_id)
+            
+            frequency = {
+                "name": type_name,
+                "current_frequency": current_frequency,
+                "expected_frequency": expected_frequency,
+                "expected_average_frequency": expected_average_frequency,
+                "thirty_day_average": thirty_frequency,
+                "season_average": season_frequency,
+                "running_average": total_frequency
+            }
+            frequencies.append(frequency)
                 
-                activity_data = {
-                    "name": activity_name,
-                    "current_frequency": current_frequency,
-                    "expected_frequency": expected_frequency,
-                    "thirty_day_average": thirty_frequency,
-                    "season_average": season_frequency,
-                    "running_average": total_frequency
-                }
-                activities.append(activity_data)
-                
-        return {"activities": activities}
+        return {"activities": frequencies}
 
-    def view_recommendations(self):
+    def get_recommendations(self):
+        
+        if not self.ensure_valid_user():
+            return
+        
+        # Ensure we have the latest averages
+        self.compute_frequency_averages()
+
         today = []
         tomorrow = []
 
-        with self.database_handler.user_calculations_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, type, total, thirty, season
-                FROM user_calculations
-            """,)
-            rows = cursor.fetchall() 
-            for row in rows:  #{"id": row[0], "type": row[1], "total": row[2], "thirty": row[3], "season": row[4]}
-
-                activity_name = row[1]
-                total_frequency = float(row[2])
-                thirty_frequency = float(row[3])
-                season_frequency = float(row[4])
-
-                expected_frequency = 0
-                with self.database_handler.user_frequencies_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT id, type, winter, summer, spring, fall
-                        FROM user_frequencies
-                    """,)
-                    freq_rows = cursor.fetchall() 
-                    for freq_row in freq_rows:  #{"id": row[0], "type": row[1], "winter": row[2], "spring": row[3], "summer": row[4], "fall": row[5]}
-                        if activity_name == freq_row[1]:                
-                            expected_frequency = freq_row[2]
-
-                frequency = self.time_of_last_activity(activity_name)
-                activity_data = {
-                    "name": activity_name,
-                    "current_frequency": frequency,
-                    "expected_frequency": expected_frequency,
-                    "thirty_day_average": thirty_frequency,
-                    "season_average": season_frequency,
-                    "running_average": total_frequency
-                }
-                
-                if frequency >= expected_frequency or frequency < 0:
-                    today.append(activity_data)
-                elif frequency == expected_frequency - 1:
-                    tomorrow.append(activity_data)
+        frequencies = self.get_frequencies()
+        for frequency in frequencies["activities"]:
+            if frequency["current_frequency"] >= frequency["expected_frequency"] or frequency["current_frequency"] < 0:
+                today.append(frequency)
+            elif frequency["current_frequency"] == frequency["expected_frequency"] - 1:
+                tomorrow.append(frequency)
 
         return {
             "today": today,
             "tomorrow": tomorrow
         }
-
-    def delete_activity(self, activity_type: str, date: str):
-        # Convert date string to datetime and format to match database format
-        date_obj = datetime.fromisoformat(date.replace('Z', '+00:00'))
-        date_str = date_obj.strftime('%Y-%m-%d')
-        
-        with self.database_handler.activities_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                DELETE FROM activities
-                WHERE type = ? AND date(time) = ?
-            """, (activity_type, date_str))
-            conn.commit()
-            if cursor.rowcount == 0:
-                return {"message": f"No activity found for {activity_type} on {date_str}"}
-            return {"message": f"Activity deleted for {activity_type} on {date_str}"}
-
-    def delete_activity_type(self, activity_type: str):
-        # Delete from activities table
-        with self.database_handler.activities_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                DELETE FROM activities
-                WHERE type = ?
-            """, (activity_type,))
-            conn.commit()
-
-        # Delete from user_frequencies table
-        with self.database_handler.user_frequencies_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                DELETE FROM user_frequencies
-                WHERE type = ?
-            """, (activity_type,))
-            conn.commit()
-
-        # Delete from user_calculations table
-        with self.database_handler.user_calculations_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                DELETE FROM user_calculations
-                WHERE type = ?
-            """, (activity_type,))
-            conn.commit()
-
-        return {"message": f"Activity type {activity_type} deleted successfully"}
-
-    def add_activity_type(self, activity_type: str, winter: int, spring: int, summer: int, fall: int):
-        # Add to user_frequencies table
-        with self.database_handler.user_frequencies_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR IGNORE INTO user_frequencies (type, winter, summer, spring, fall)
-                VALUES (?, ?, ?, ?, ?)
-            """, (activity_type, winter, spring, summer, fall))
-            conn.commit()
-
-        # Add to user_calculations table
-        with self.database_handler.user_calculations_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR IGNORE INTO user_calculations (type, total, thirty, season)
-                VALUES (?, ?, ?, ?)
-            """, (activity_type, 0, 0, 0))
-            conn.commit()
-
-        return {"message": f"Activity type {activity_type} added with seasonal frequencies: Winter={winter}, Spring={spring}, Summer={summer}, Fall={fall}"}
-
-    def get_user_timezone(self):
-        with self.database_handler.user_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT timezone
-                FROM user
-                LIMIT 1
-            """)
-            row = cursor.fetchone()
-            if row:
-                return {"timezone": row[0]}
-            return {"timezone": "UTC"}  # Default to UTC if no timezone is set
-
-    def update_timezone(self, timezone: str):
-        with self.database_handler.user_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE user
-                SET timezone = ?
-                WHERE id = 1
-            """, (timezone,))
-            conn.commit()
-            return {"message": f"Timezone updated to {timezone}"}
-
-    def get_activity_table(self):
-        activities = []
-        with self.database_handler.activities_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT type, time
-                FROM activities
-                ORDER BY time DESC
-            """)
-            rows = cursor.fetchall()
-            for row in rows:
-                activities.append({
-                    "type": row[0],
-                    "time": row[1]
-                })
-        return {"activities": activities}
-
-    def get_goal_frequencies(self):
-        frequencies = []
-        with self.database_handler.user_frequencies_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT type, winter, spring, summer, fall
-                FROM user_frequencies
-                ORDER BY type
-            """)
-            rows = cursor.fetchall()
-            for row in rows:
-                frequencies.append({
-                    "type": row[0],
-                    "winter": row[1],
-                    "spring": row[2],
-                    "summer": row[3],
-                    "fall": row[4]
-                })
-        return {"frequencies": frequencies}
